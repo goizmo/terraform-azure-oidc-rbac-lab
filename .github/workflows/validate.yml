@@ -1,0 +1,27 @@
+name: Validar
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - name: Validar configuración de la aplicación
+        run: |
+          jq -e 'type == "object" and (.application | type == "string" and length > 0) and (.logLevel | IN("debug","info","warn","error")) and (.pollIntervalSeconds | type == "number" and . > 0 and . == floor)' config/appsettings.json
+      - run: terraform -chdir=infra fmt -check -diff
+      - run: terraform -chdir=infra init -backend=false -input=false -lockfile=readonly
+      - run: terraform -chdir=infra validate
