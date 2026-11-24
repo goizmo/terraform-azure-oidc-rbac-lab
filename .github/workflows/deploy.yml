@@ -1,0 +1,43 @@
+name: Desplegar configuración
+on:
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: azure-config-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: 'true'
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      STORAGE_ACCOUNT: ${{ vars.STORAGE_ACCOUNT }}
+      TF_VAR_app_container_id: ${{ vars.APP_CONTAINER_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - name: Comprobar variables y configuración
+        run: |
+          : "${ARM_CLIENT_ID:?Falta AZURE_CLIENT_ID}" "${ARM_TENANT_ID:?Falta AZURE_TENANT_ID}" "${ARM_SUBSCRIPTION_ID:?Falta AZURE_SUBSCRIPTION_ID}"
+          : "${STORAGE_ACCOUNT:?Falta STORAGE_ACCOUNT}" "${TF_VAR_app_container_id:?Falta APP_CONTAINER_ID}"
+          jq -e 'type == "object" and (.application | type == "string" and length > 0) and (.logLevel | IN("debug","info","warn","error")) and (.pollIntervalSeconds | type == "number" and . > 0 and . == floor)' config/appsettings.json
+      - name: Inicializar el estado remoto con OIDC
+        run: terraform -chdir=infra init -input=false -lockfile=readonly -backend-config="storage_account_name=$STORAGE_ACCOUNT"
+      - name: Generar el plan
+        run: terraform -chdir=infra plan -input=false -lock-timeout=2m -out="$RUNNER_TEMP/lab.tfplan"
+      - name: Aplicar el plan guardado
+        run: terraform -chdir=infra apply -input=false -lock-timeout=2m "$RUNNER_TEMP/lab.tfplan"
