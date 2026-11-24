@@ -23,5 +23,7 @@ jobs:
         run: |
           jq -e 'type == "object" and (.application | type == "string" and length > 0) and (.logLevel | IN("debug","info","warn","error")) and (.pollIntervalSeconds | type == "number" and . > 0 and . == floor)' config/appsettings.json
       - run: terraform -chdir=infra fmt -check -diff
-      - run: terraform -chdir=infra init -backend=false -input=false -lockfile=readonly
+      - run: terraform -chdir=infra init -backend=false -input=false
+      - name: Comprobar que el lock incluye la plataforma del runner
+        run: git diff --exit-code -- infra/.terraform.lock.hcl
       - run: terraform -chdir=infra validate
